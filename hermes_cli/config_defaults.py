@@ -195,6 +195,11 @@ DEFAULT_CONFIG = {
         # force on everywhere; "auto" = on for interactive coding surfaces and programmatic callers,
         # off for messaging surfaces. Doc/markdown/skill-only edits never fire.
         "verify_on_stop": False,
+        # Require visible user-facing status between consecutive reportable tool
+        # batches (local carry; see agent/completion_report_gate.py). If the
+        # model is silent, emit a deterministic interim update before executing
+        # the next batch without mutating chat history.
+        "completion_report_gate": False,
         # Inactivity warning (seconds), once per run before gateway_timeout; no interrupt. 0 = off.
         "gateway_timeout_warning": 900,
         # Max seconds any surface (CLI, TUI/Desktop, messaging gateway) blocks an agent awaiting a

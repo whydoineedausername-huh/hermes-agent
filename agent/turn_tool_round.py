@@ -143,6 +143,35 @@ def run_tool_round(
     if not duplicate_previous_interim:
         agent._emit_interim_assistant_message(assistant_msg)
 
+    # Mechanical phase-boundary reporting (local carry, agent.completion_report_gate):
+    # a prior reportable tool batch armed the gate; if the model supplied no
+    # user-visible commentary between batches, emit a deterministic interim update
+    # before dispatching — no synthetic conversation message, role order preserved.
+    with suppress(Exception):
+        _crg = getattr(agent, "_completion_report_gate", None)
+        if _crg is None:
+            from agent.completion_report_gate import (
+                CompletionReportGate,
+                completion_report_gate_enabled,
+            )
+
+            _crg = CompletionReportGate(enabled=completion_report_gate_enabled())
+            agent._completion_report_gate = _crg
+        if _crg.pending:
+            _gate_decision = _crg.before_tool_batch(assistant_message.content)
+            if _gate_decision.action == "report":
+                if getattr(agent, "interim_assistant_callback", None) is not None:
+                    agent._emit_interim_assistant_message(
+                        {"role": "assistant", "content": _gate_decision.message}
+                    )
+                else:
+                    agent._vprint(
+                        f"{agent.log_prefix}{_gate_decision.message}", force=True
+                    )
+                logger.info(
+                    "completion report gate emitted status before silent consecutive tool batch"
+                )
+
     # Flush open streaming boxes before tools so early content doesn't wrap tool feed
     # lines. Display callback only — TTS (_stream_callback) must NOT receive None (EOS).
     if agent.stream_delta_callback:
@@ -150,6 +179,12 @@ def run_tool_round(
             agent.stream_delta_callback(None)
 
     agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
+
+    # Arm the completion-report gate for the NEXT batch: a reportable batch just ran.
+    with suppress(Exception):
+        _crg = getattr(agent, "_completion_report_gate", None)
+        if _crg is not None and assistant_message.tool_calls:
+            _crg.arm(tc.function.name for tc in assistant_message.tool_calls)
 
     if getattr(agent, "_incremental_persistence_failed", False):
         # Tool result could not be made canonical: never send the in-memory result to
