@@ -598,6 +598,12 @@ def _run_tool_activity_heartbeat(
     from tools.interrupt import is_thread_interrupted
 
     try:
+        # Mark a silent tool as live immediately. Apart from eliminating a full
+        # heartbeat-period blind spot at tool start, this makes the cadence
+        # independent of scheduler jitter under a busy gateway.
+        if is_thread_interrupted(worker_tid):
+            return
+        agent._touch_activity(label)
         while not stop_event.wait(interval):
             if is_thread_interrupted(worker_tid):
                 return

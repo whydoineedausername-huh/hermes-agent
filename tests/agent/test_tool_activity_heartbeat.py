@@ -109,11 +109,14 @@ def test_heartbeat_touches_periodically_and_stops():
     import agent.tool_executor as te
 
     touches: list = []
+    second_touch = threading.Event()
     stop = threading.Event()
 
     class _Agent:
         def _touch_activity(self, desc):
             touches.append(desc)
+            if len(touches) >= 2:
+                second_touch.set()
 
     thread = threading.Thread(
         target=te._run_tool_activity_heartbeat,
@@ -122,7 +125,7 @@ def test_heartbeat_touches_periodically_and_stops():
         daemon=True,
     )
     thread.start()
-    time.sleep(0.12)
+    assert second_touch.wait(timeout=1.0), f"expected periodic touches, got {len(touches)}"
     stop.set()
     thread.join(timeout=1.0)
 
@@ -282,12 +285,14 @@ def test_heartbeat_exits_once_worker_tid_is_interrupted():
     from tools.interrupt import set_interrupt
 
     touches: list = []
+    first_touch = threading.Event()
     stop = threading.Event()
     fake_worker_tid = 10**9 + 111922  # not a live thread; only the bit matters
 
     class _Agent:
         def _touch_activity(self, desc):
             touches.append(desc)
+            first_touch.set()
 
     thread = threading.Thread(
         target=te._run_tool_activity_heartbeat,
@@ -297,8 +302,7 @@ def test_heartbeat_exits_once_worker_tid_is_interrupted():
     )
     thread.start()
     try:
-        time.sleep(0.12)
-        assert touches, "heartbeat never stamped while the worker was live"
+        assert first_touch.wait(timeout=1.0), "heartbeat never stamped while the worker was live"
         set_interrupt(True, fake_worker_tid)
         thread.join(timeout=1.0)
         assert not thread.is_alive(), "heartbeat kept running after its worker was abandoned"
